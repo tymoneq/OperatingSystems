@@ -1,0 +1,27 @@
+#pragma once
+#define TOKEN_SEP " \t\n\r"
+
+#define true 1
+#define false 0
+#define bool int32_t
+#define MAX_LEN 1024
+
+typedef struct {
+  /** The name of the executable. */
+  char *progname;
+
+  /**
+   * IO redirections; redirect[i] should be used as fd i in the child.
+   * A value of -1 indicates no redirect.
+   */
+  int redirect[2];
+
+  /** The arguments; must be NULL-terminated. */
+  char *args[];
+} cmd_struct;
+
+
+
+char* read_input();
+char* next_non_empty(char** line);
+cmd_struct* parse_line(char* line) ;
