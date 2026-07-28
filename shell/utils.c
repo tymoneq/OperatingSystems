@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
 const char* SHELL_NAME = "my_shell";
 
 char* read_input() {
@@ -33,4 +35,8 @@ cmd_struct* parse_line(char* line) {
   ret->redirect[0] = ret->redirect[1] = -1;
 
   return ret;
+}
+
+void run_command(cmd_struct* parsed_line) {
+  int code = execvp(parsed_line->progname, parsed_line->args);
 }

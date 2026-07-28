@@ -20,8 +20,7 @@ typedef struct {
   char *args[];
 } cmd_struct;
 
-
-
-char* read_input();
-char* next_non_empty(char** line);
-cmd_struct* parse_line(char* line) ;
+char *read_input();
+char *next_non_empty(char **line);
+cmd_struct *parse_line(char *line);
+void run_command(cmd_struct *parsed_line);
