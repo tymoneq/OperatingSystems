@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 const char* SHELL_NAME = "my_shell";
@@ -37,6 +38,20 @@ cmd_struct* parse_line(char* line) {
   return ret;
 }
 
+static void child_proccess(cmd_struct* parsed_line) {
+  execvp(parsed_line->progname, parsed_line->args);
+}
+static void parent_proccess() {
+  wait(NULL);
+}
+
 void run_command(cmd_struct* parsed_line) {
-  int code = execvp(parsed_line->progname, parsed_line->args);
+  pid_t pid = fork();
+
+  //  child proccess if pid == 0
+  if (pid == 0)
+    child_proccess(parsed_line);
+
+  if (pid != 0)
+    parent_proccess();
 }
