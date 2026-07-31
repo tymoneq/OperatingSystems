@@ -97,33 +97,33 @@ static void create_child(cmd_struct* cmd,
 }
 
 static void run_pipe(pipline_struct* pipline) {
-  int pipe_fds[2];
-  pipe_fds[0] = 4;
-  pipe_fds[1] = 5;
   if (pipline->n_cmds == 1) {
-    pipe_fds[0] = 0;
-    pipe_fds[1] = 1;
-  } else {
-    pipe(pipe_fds);
-  }
+    pid_t pid = fork();
 
-  pid_t pid = fork();
-
-  if (pipline->n_cmds == 1) {
     if (pid == 0) {
       create_child(pipline->cmds[0], -1, -1);
     } else {
       parent_proccess(pid);
     }
-  } else if (pid == 0) {
+    return;
+  }
+
+  int pipe_fds[2];
+  pipe_fds[0] = 4;
+  pipe_fds[1] = 5;
+
+  pipe(pipe_fds);
+  pid_t pid = fork();
+
+  if (pid == 0) {
     create_child(pipline->cmds[0], -1, pipe_fds[1]);
   } else {
+    close(pipe_fds[1]);
     pid_t pid2 = fork();
-    if (pid == 0) {
+    if (pid2 == 0) {
       create_child(pipline->cmds[1], pipe_fds[0], -1);
     } else {
       close(pipe_fds[0]);
-      close(pipe_fds[1]);
       parent_proccess(pid2);
     }
   }
