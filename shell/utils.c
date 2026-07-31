@@ -46,12 +46,20 @@ static void parent_proccess() {
 }
 
 void run_command(cmd_struct* parsed_line) {
-  pid_t pid = fork();
+  if (strcmp("cd", parsed_line->progname) == 0) {
+    int success_code = chdir(parsed_line->args[1]);
 
-  //  child proccess if pid == 0
-  if (pid == 0)
-    child_proccess(parsed_line);
+    if (success_code == -1)
+      printf("wrong path\n");
 
-  if (pid != 0)
-    parent_proccess();
+  } else {
+    pid_t pid = fork();
+
+    //  child proccess if pid == 0
+    if (pid == 0)
+      child_proccess(parsed_line);
+
+    if (pid != 0)
+      parent_proccess();
+  }
 }
