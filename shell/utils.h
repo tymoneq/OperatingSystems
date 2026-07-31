@@ -6,6 +6,8 @@
 #define bool int32_t
 #define MAX_LEN 1024
 
+
+
 typedef struct {
   /** The name of the executable. */
   char *progname;

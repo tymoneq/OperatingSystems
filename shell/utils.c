@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
 const char* SHELL_NAME = "my_shell";
 
 char* read_input() {
@@ -54,37 +54,81 @@ pipline_struct* parse_line(char* line) {
   return ret;
 }
 
-static void child_proccess(cmd_struct* parsed_line) {
-  int status = execvp(parsed_line->progname, parsed_line->args);
+static void child_proccess(cmd_struct* cmd) {
+  int status = execvp(cmd->progname, cmd->args);
   if (status == -1)
-    printf("Command not found %s\n", parsed_line->progname);
+    printf("Command not found %s\n", cmd->progname);
 }
-static void parent_proccess() {
-  wait(NULL);
+static void parent_proccess(pid_t child_pid) {
+  int status;
+  waitpid(child_pid, &status, 0);
 }
 
-static void execute_cmd(cmd_struct* parsed_line) {
-  if (strcmp("cd", parsed_line->progname) == 0) {
-    int success_code = chdir(parsed_line->args[1]);
+static void run_cd(cmd_struct* cmd) {
+  int success_code = chdir(cmd->args[1]);
 
-    if (success_code == -1)
-      printf("wrong path\n");
+  if (success_code == -1)
+    printf("wrong path\n");
+}
 
+static void execute_cmd(cmd_struct* cmd) {
+  if (strcmp("cd", cmd->progname) == 0)
+    run_cd(cmd);
+  else {
+    child_proccess(cmd);
+  }
+}
+
+static void create_child(cmd_struct* cmd,
+                         const int pipe_read,
+                         const int pipe_write) {
+  if (pipe_read != -1) {
+    dup2(pipe_read, STDIN_FILENO);
+    cmd->redirect[0] = pipe_read;
+    close(pipe_read);
+  }
+
+  if (pipe_write != -1) {
+    dup2(pipe_write, STDOUT_FILENO);
+    cmd->redirect[1] = pipe_write;
+    close(pipe_write);
+  }
+  execute_cmd(cmd);
+}
+
+static void run_pipe(pipline_struct* pipline) {
+  int pipe_fds[2];
+  pipe_fds[0] = 4;
+  pipe_fds[1] = 5;
+  if (pipline->n_cmds == 1) {
+    pipe_fds[0] = 0;
+    pipe_fds[1] = 1;
   } else {
-    pid_t pid = fork();
+    pipe(pipe_fds);
+  }
 
-    //  child proccess if pid == 0
-    if (pid == 0)
-      child_proccess(parsed_line);
+  pid_t pid = fork();
 
-    if (pid != 0)
-      parent_proccess();
+  if (pipline->n_cmds == 1) {
+    if (pid == 0) {
+      create_child(pipline->cmds[0], -1, -1);
+    } else {
+      parent_proccess(pid);
+    }
+  } else if (pid == 0) {
+    create_child(pipline->cmds[0], -1, pipe_fds[1]);
+  } else {
+    pid_t pid2 = fork();
+    if (pid == 0) {
+      create_child(pipline->cmds[1], pipe_fds[0], -1);
+    } else {
+      close(pipe_fds[0]);
+      close(pipe_fds[1]);
+      parent_proccess(pid2);
+    }
   }
 }
 
 void run_command(pipline_struct* parsed_line) {
-  if (parsed_line->n_cmds == 1) {
-    execute_cmd(parsed_line->cmds[0]);
-  } else {
-  }
+  run_pipe(parsed_line);
 }
