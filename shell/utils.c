@@ -39,7 +39,10 @@ cmd_struct* parse_line(char* line) {
 }
 
 static void child_proccess(cmd_struct* parsed_line) {
-  execvp(parsed_line->progname, parsed_line->args);
+  int status = execvp(parsed_line->progname, parsed_line->args);
+  if (status == -1) 
+    printf("Command not found %s\n", parsed_line->progname);
+  
 }
 static void parent_proccess() {
   wait(NULL);
