@@ -2,7 +2,7 @@
 
 void run_shell() {
   char* line = read_input();
-  cmd_struct* parsed_line = parse_line(line);
+  pipline_struct* parsed_line = parse_line(line);
   run_command(parsed_line);
 }
 

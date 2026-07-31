@@ -23,32 +23,47 @@ char* next_non_empty(char** line) {
   return tok;
 }
 
-cmd_struct* parse_line(char* line) {
+pipline_struct* parse_line(char* line) {
   char* copy = strndup(line, MAX_LEN);
   char* token;
   int i = 0;
 
-  cmd_struct* ret = calloc(sizeof(cmd_struct) + MAX_LEN * sizeof(char*), 1);
+  pipline_struct* ret =
+      calloc(1, sizeof(pipline_struct) + (MAX_LEN * sizeof(cmd_struct*)));
+  ret->cmds[0] = calloc(1, sizeof(cmd_struct) + MAX_LEN * sizeof(char*));
+
   while (token = next_non_empty(&copy)) {
-    ret->args[i++] = token;
+    // create new pipe element
+    if (strcmp("|", token) == 0) {
+      ret->cmds[ret->n_cmds]->progname = ret->cmds[ret->n_cmds]->args[0];
+      ret->cmds[ret->n_cmds]->redirect[0] =
+          ret->cmds[ret->n_cmds]->redirect[1] = -1;
+      ++ret->n_cmds;
+      i = 0;
+      ret->cmds[ret->n_cmds] =
+          calloc(1, sizeof(cmd_struct) + MAX_LEN * sizeof(char*));
+    } else {
+      ret->cmds[ret->n_cmds]->args[i++] = token;
+    }
   }
-  ret->progname = ret->args[0];
-  ret->redirect[0] = ret->redirect[1] = -1;
+  ret->cmds[ret->n_cmds]->progname = ret->cmds[ret->n_cmds]->args[0];
+  ret->cmds[ret->n_cmds]->redirect[0] = ret->cmds[ret->n_cmds]->redirect[1] =
+      -1;
+  ++ret->n_cmds;
 
   return ret;
 }
 
 static void child_proccess(cmd_struct* parsed_line) {
   int status = execvp(parsed_line->progname, parsed_line->args);
-  if (status == -1) 
+  if (status == -1)
     printf("Command not found %s\n", parsed_line->progname);
-  
 }
 static void parent_proccess() {
   wait(NULL);
 }
 
-void run_command(cmd_struct* parsed_line) {
+static void execute_cmd(cmd_struct* parsed_line) {
   if (strcmp("cd", parsed_line->progname) == 0) {
     int success_code = chdir(parsed_line->args[1]);
 
@@ -64,5 +79,12 @@ void run_command(cmd_struct* parsed_line) {
 
     if (pid != 0)
       parent_proccess();
+  }
+}
+
+void run_command(pipline_struct* parsed_line) {
+  if (parsed_line->n_cmds == 1) {
+    execute_cmd(parsed_line->cmds[0]);
+  } else {
   }
 }
