@@ -28,6 +28,5 @@ typedef struct {
 } pipline_struct;
 
 char *read_input();
-char *next_non_empty(char **line);
 pipline_struct *parse_line(char *line);
 void run_command(pipline_struct *parsed_line);
