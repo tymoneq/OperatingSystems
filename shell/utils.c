@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 const char* SHELL_NAME = "my_shell";
-static int pipe_fds[2] = {3, 4};
+static int pipe_fds[2];
 
 static void strip_quotes(char* str) {
   char* read_ptr = str;
@@ -164,12 +164,15 @@ static void run_pipe(pipline_struct* pipline, int current_cmd) {
 
   pid_t left_child_pid = fork();
   if (left_child_pid == 0) {
+    printf("%s\n", pipline->cmds[current_cmd]->progname);
     init_child(pipline, current_cmd);
   } else {
+    close(pipe_fds[1]);
     wait_for_child(left_child_pid);
+
     if (old_pipe_read != -1)
       close(old_pipe_read);
-    close(pipe_fds[1]);
+
     run_pipe(pipline, current_cmd + 1);
   }
 }
