@@ -154,7 +154,7 @@ static void run_pipe(pipline_struct* pipline, int current_cmd) {
   if (current_cmd >= pipline->n_cmds)
     return;
   int old_pipe_read = -1;
-  if (current_cmd > 0) {
+  if (current_cmd != 0 && current_cmd != pipline->n_cmds - 1) {
     old_pipe_read = pipe_fds[0];
     init_new_pipe();
   }
