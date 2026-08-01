@@ -8,6 +8,20 @@
 const char* SHELL_NAME = "my_shell";
 static int pipe_fds[2] = {3, 4};
 
+static void strip_quotes(char* str) {
+  char* read_ptr = str;
+  char* write_ptr = str;
+
+  while (*read_ptr != '\0') {
+    if (*read_ptr != '"' && *read_ptr != '\'') {
+      *write_ptr = *read_ptr;
+      write_ptr++;
+    }
+    read_ptr++;
+  }
+  *write_ptr = '\0';
+}
+
 char* read_input() {
   printf("%s>> ", SHELL_NAME);
 
@@ -44,6 +58,7 @@ pipline_struct* parse_line(char* line) {
       ret->cmds[ret->n_cmds] =
           calloc(1, sizeof(cmd_struct) + MAX_LEN * sizeof(char*));
     } else {
+      strip_quotes(token);
       ret->cmds[ret->n_cmds]->args[i++] = token;
     }
   }
@@ -102,27 +117,57 @@ static inline void init_new_pipe() {
 }
 
 static void init_child(pipline_struct* pipline, const int current_cmd) {
-  if (current_cmd == 0)
-    run_child(pipline->cmds[0], -1, pipe_fds[1]);
-  else if (current_cmd == pipline->n_cmds - 1)
-    run_child(pipline->cmds[current_cmd], pipe_fds[0], -1);
-  else {
-    int old_pipe_read = pipe_fds[0];
-    init_new_pipe();
-    run_child(pipline->cmds[current_cmd], old_pipe_read, pipe_fds[1]);
-    close(old_pipe_read);
+  if (current_cmd == 0) {
+    close(pipe_fds[0]);
+    run_child(pipline->cmds[0], pipline->cmds[current_cmd]->redirect[0],
+              pipline->cmds[current_cmd]->redirect[1]);
+  } else if (current_cmd == pipline->n_cmds - 1) {
+    run_child(pipline->cmds[current_cmd],
+              pipline->cmds[current_cmd]->redirect[0],
+              pipline->cmds[current_cmd]->redirect[1]);
+  } else {
+    run_child(pipline->cmds[current_cmd],
+              pipline->cmds[current_cmd]->redirect[0],
+              pipline->cmds[current_cmd]->redirect[1]);
   }
+}
+
+static void set_redirect(cmd_struct* cmd, int input, int output) {
+  cmd->redirect[0] = input;
+  cmd->redirect[1] = output;
+}
+
+static void redirect(pipline_struct* pipline,
+                     int current_cmd,
+                     int input,
+                     int output,
+                     int old_pipe_read) {
+  if (current_cmd == 0)
+    set_redirect(pipline->cmds[0], -1, output);
+  else if (current_cmd == pipline->n_cmds - 1)
+    set_redirect(pipline->cmds[current_cmd], input, -1);
+  else
+    set_redirect(pipline->cmds[current_cmd], old_pipe_read, output);
 }
 
 static void run_pipe(pipline_struct* pipline, int current_cmd) {
   if (current_cmd >= pipline->n_cmds)
     return;
+  int old_pipe_read = -1;
+  if (current_cmd > 0) {
+    old_pipe_read = pipe_fds[0];
+    init_new_pipe();
+  }
+
+  redirect(pipline, current_cmd, pipe_fds[0], pipe_fds[1], old_pipe_read);
 
   pid_t left_child_pid = fork();
   if (left_child_pid == 0) {
     init_child(pipline, current_cmd);
   } else {
     wait_for_child(left_child_pid);
+    if (old_pipe_read != -1)
+      close(old_pipe_read);
     close(pipe_fds[1]);
     run_pipe(pipline, current_cmd + 1);
   }
