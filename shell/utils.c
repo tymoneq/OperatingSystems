@@ -61,10 +61,12 @@ pipline_struct* parse_line(char* line) {
       ret->cmds[ret->n_cmds]->args[i++] = token;
     }
   }
-  ret->cmds[ret->n_cmds]->progname = ret->cmds[ret->n_cmds]->args[0];
-  ret->cmds[ret->n_cmds]->redirect[0] = ret->cmds[ret->n_cmds]->redirect[1] =
-      -1;
-  ++ret->n_cmds;
+  if (ret->cmds[ret->n_cmds]->args[0] != NULL) {
+    ret->cmds[ret->n_cmds]->progname = ret->cmds[ret->n_cmds]->args[0];
+    ret->cmds[ret->n_cmds]->redirect[0] = ret->cmds[ret->n_cmds]->redirect[1] =
+        -1;
+    ++ret->n_cmds;
+  }
 
   return ret;
 }
@@ -111,10 +113,9 @@ static void run_child(cmd_struct* cmd,
   execute_cmd(cmd);
 }
 
-
 static void run_pipe(pipline_struct* pipline, int current_cmd) {
   int prev_read_pipe = -1;
-  pid_t pids[MAX_LEN];  
+  pid_t pids[MAX_LEN];
 
   for (int i = 0; i < pipline->n_cmds; i++) {
     int current_pipe[2];
