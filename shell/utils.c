@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +27,12 @@ char* read_input() {
 
   char* line = NULL;
   size_t capacity = 0;
-  getline(&line, &capacity, stdin);
+  ssize_t bytes_read = getline(&line, &capacity, stdin);
+
+  if (bytes_read == -1) {
+    free(line);
+    return NULL;
+  }
 
   return line;
 }
@@ -38,6 +44,8 @@ static char* next_non_empty(char** line) {
 }
 
 pipline_struct* parse_line(char* line) {
+  if (line == NULL)
+    return NULL;
   char* copy = strndup(line, MAX_LEN);
   char* token;
   int i = 0;
@@ -52,6 +60,8 @@ pipline_struct* parse_line(char* line) {
       ret->cmds[ret->n_cmds]->progname = ret->cmds[ret->n_cmds]->args[0];
       ret->cmds[ret->n_cmds]->redirect[0] =
           ret->cmds[ret->n_cmds]->redirect[1] = -1;
+
+      ret->cmds[ret->n_cmds]->num_of_args = i;
       ++ret->n_cmds;
       i = 0;
       ret->cmds[ret->n_cmds] =
@@ -170,4 +180,19 @@ void run_command(pipline_struct* parsed_line) {
   } else {
     run_pipe(parsed_line, 0);
   }
+}
+
+void free_pipline(pipline_struct* pipline) {
+  if (pipline == NULL)
+    return;
+
+  for (size_t i = 0; i <= pipline->n_cmds; i++) {
+    if (pipline->cmds[i] != NULL) {
+      for (size_t j = 0; j <= pipline->cmds[i]->num_of_args; j++)
+        free(pipline->cmds[i]->args[i]);
+      free(pipline->cmds[i]);
+    }
+  }
+
+  free(pipline);
 }
