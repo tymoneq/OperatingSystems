@@ -150,7 +150,6 @@ static void run_pipe(pipline_struct* pipline, int current_cmd) {
     prev_read_pipe = next_read_pipe;
   }
 
-  // 7. Finally, wait for ALL children to finish before showing the prompt again
   for (int i = 0; i < pipline->n_cmds; i++) {
     waitpid(pids[i], NULL, 0);
   }
