@@ -12,7 +12,7 @@ void handle_sigint(int sig) {
 void run_shell() {
   char* line = read_input();
   pipline_struct* parsed_line = parse_line(line);
-
+ 
   if (parsed_line == NULL) {
     runing = 0;
     free_pipline(parsed_line);
