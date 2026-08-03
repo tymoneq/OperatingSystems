@@ -63,10 +63,10 @@ func main() {
 		if words[len(words)-1] == "[heap]" {
 			addr := words[0]
 			perm := words[1]
-			offset := words[2]
-			device := words[3]
-			inode := words[4]
-			pathname := words[5]
+			//offset := words[2]
+			//device := words[3]
+			//inode := words[4]
+			//pathname := words[5]
 
 			if perm[0] != 'r' || perm[1] != 'w' {
 				fmt.Println("Wrong permissions")
@@ -79,8 +79,8 @@ func main() {
 				return
 			}
 
-			addr_start := addr_split[0]
-			addr_end := addr_split[1]
+			addr_start, err := strconv.ParseInt(addr_split[0], 16, 64)
+			addr_end, err := strconv.ParseInt(addr_split[1], 16, 64)
 
 			mem_file, err := os.OpenFile(mem_filename, os.O_RDWR, 0644)
 			if err != nil {
@@ -88,6 +88,15 @@ func main() {
 				return
 			}
 			defer mem_file.Close()
+
+			size := addr_end - addr_start
+			heap := make([]byte, size)
+
+			_, err = mem_file.ReadAt(heap, addr_start)
+			if err != nil {
+				fmt.Printf("Error reading mem file %v\n", err)
+				return
+			}
 
 		}
 
