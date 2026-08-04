@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"strconv"
@@ -43,10 +44,10 @@ func main() {
 		return
 	}
 
-	maps_filename := fmt.Sprintf("%s%s%s", "/proc/", pid, "/maps")
-	fmt.Printf("[+] maps : %s", maps_filename)
-	mem_filename := fmt.Sprintf("%s%s%s", "/proc/", pid, "/mem")
-	fmt.Printf("[+] maps : %s", mem_filename)
+	maps_filename := fmt.Sprintf("%s%s%s", "/proc/", strconv.Itoa(pid), "/maps")
+	fmt.Printf("[+] maps : %s\n", maps_filename)
+	mem_filename := fmt.Sprintf("%s%s%s", "/proc/", strconv.Itoa(pid), "/mem")
+	fmt.Printf("[+] maps : %s\n", mem_filename)
 
 	file, err := os.Open(maps_filename)
 	if err != nil {
@@ -97,7 +98,23 @@ func main() {
 				fmt.Printf("Error reading mem file %v\n", err)
 				return
 			}
+			search_bytes := []byte(search_string)
 
+			index := bytes.Index(heap, search_bytes)
+			if index == -1 {
+				fmt.Println("Couldn't find the string")
+				return
+			}
+
+			fmt.Printf("[+] Writing %s at %dI\n", replace_string, addr_start+int64(index))
+			write_bytes := []byte(replace_string)
+			_, err = mem_file.WriteAt(write_bytes, addr_start+int64(index))
+
+			if err != nil {
+				fmt.Printf("Error writing to mem file %v\n", err)
+				return
+			}
+			fmt.Println("[*] Memory successfully overwritten!")
 		}
 
 	}
