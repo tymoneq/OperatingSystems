@@ -135,12 +135,45 @@ static void ram_destroy(void* private_data) {
   File_list = NULL;
 }
 
+static int ram_write(const char* path,
+                     const char* buf,
+                     size_t size,
+                     off_t offset,
+                     struct fuse_file_info* fi) {
+  (void)fi;
+
+  struct ram_file* file = find_file(path);
+
+  if (file == NULL) {
+    return -ENOENT;
+  }
+
+  size_t new_size = offset + size;
+
+  if (new_size > file->size) {
+    char* new_content = realloc(file->content, new_size);
+    if (new_content == NULL)
+      return -ENOMEM;
+
+    if ((size_t)offset > file->size) {
+      memset(new_content + file->size, 0, offset - file->size);
+    }
+
+    file->content = new_content;
+    file->size = new_size;
+  }
+
+  memcpy(file->content + offset, buf, size);
+  return size;
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
     .utimens = ram_utimens,
     .readdir = ram_readdir,
     .destroy = ram_destroy,
+    .write = ram_write,
 };
 
 int main(int argc, char* argv[]) {
