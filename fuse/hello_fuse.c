@@ -53,18 +53,19 @@ static int ram_create(const char* path,
 }
 
 // Fix for 'touch': Pretend we updated the file's timestamp
-static int ram_utimens(const char *path, const struct timespec tv[2], 
-                       struct fuse_file_info *fi) {
-    (void) fi;
-    (void) tv;
-    
-    // Make sure the file or root directory actually exists first
-    if (strcmp(path, "/") != 0 && find_file(path) == NULL) {
-        return -ENOENT;
-    }
-    
-    // Return 0 to tell the OS "Yes, I successfully updated the time!"
-    return 0; 
+static int ram_utimens(const char* path,
+                       const struct timespec tv[2],
+                       struct fuse_file_info* fi) {
+  (void)fi;
+  (void)tv;
+
+  // Make sure the file or root directory actually exists first
+  if (strcmp(path, "/") != 0 && find_file(path) == NULL) {
+    return -ENOENT;
+  }
+
+  // Return 0 to tell the OS "Yes, I successfully updated the time!"
+  return 0;
 }
 
 static int ram_getattr(const char* path,
@@ -92,10 +93,36 @@ static int ram_getattr(const char* path,
   }
 }
 
+static int ram_readdir(const char* path,
+                       void* buf,
+                       fuse_fill_dir_t filler,
+                       off_t offset,
+                       struct fuse_file_info* fi,
+                       enum fuse_readdir_flags flags) {
+  (void)offset;
+  (void)fi;
+  (void)flags;
+
+  if (strcmp(path, "/") != 0)
+    return -ENONET;
+
+  filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+  filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+
+  struct ram_file* file = File_list;
+  while (file != NULL) {
+    filler(buf, file->path + 1, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+    file = file->next;
+  }
+
+  return 0;
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
     .utimens = ram_utimens,
+    .readdir = ram_readdir,
 };
 
 int main(int argc, char* argv[]) {
