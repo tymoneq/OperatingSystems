@@ -204,6 +204,32 @@ static int ram_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) {
   return 0;
 }
 
+static int ram_unlink(const char* path) {
+  struct ram_file* current_file = File_list;
+  struct ram_file* prev_file = NULL;
+
+  while (current_file != NULL) {
+    if (strcmp(current_file->path, path) == 0) {
+      if (prev_file == NULL) {
+        File_list = current_file->next;
+      } else {
+        prev_file->next = current_file->next;
+      }
+      if (current_file->content != NULL)
+        free(current_file->content);
+
+      free(current_file);
+
+      return 0;
+    }
+
+    prev_file = current_file;
+    current_file = current_file->next;
+  }
+
+  return -ENOENT;
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
@@ -213,6 +239,7 @@ static const struct fuse_operations ram_oper = {
     .write = ram_write,
     .read = ram_read,
     .chmod = ram_chmod,
+    .unlink = ram_unlink,
 };
 
 int main(int argc, char* argv[]) {
