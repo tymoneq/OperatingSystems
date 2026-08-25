@@ -118,11 +118,29 @@ static int ram_readdir(const char* path,
   return 0;
 }
 
+static void ram_destroy(void* private_data) {
+  (void)private_data;
+
+  struct ram_file* current_file = File_list;
+  struct ram_file* next_file = NULL;
+
+  while (current_file != NULL) {
+    next_file = current_file->next;
+    if (current_file->content != NULL)
+      free(current_file->content);
+    free(current_file);
+    current_file = next_file;
+  }
+
+  File_list = NULL;
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
     .utimens = ram_utimens,
     .readdir = ram_readdir,
+    .destroy = ram_destroy,
 };
 
 int main(int argc, char* argv[]) {
