@@ -270,6 +270,18 @@ static int ram_mkdir(const char* path, mode_t mode) {
   return 0;
 }
 
+static int ram_rmdir(const char* path) {
+  struct ram_file* dir = find_file(path);
+
+  if (dir == NULL)
+    return -ENOENT;
+
+  if (!(dir->mode & S_IFDIR))
+    return -ENOTDIR;
+
+  return ram_unlink(path);
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
@@ -281,6 +293,7 @@ static const struct fuse_operations ram_oper = {
     .chmod = ram_chmod,
     .unlink = ram_unlink,
     .mkdir = ram_mkdir,
+    .rmdir = ram_rmdir,
 };
 
 int main(int argc, char* argv[]) {
