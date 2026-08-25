@@ -104,15 +104,34 @@ static int ram_readdir(const char* path,
   (void)fi;
   (void)flags;
 
-  if (strcmp(path, "/") != 0)
-    return -ENONET;
+  if (strcmp(path, "/") != 0) {
+    struct ram_file* dir = find_file(path);
+
+    if (!dir || !(dir->mode & S_IFDIR))
+      return -ENONET;
+  }
 
   filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
   filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
   struct ram_file* file = File_list;
   while (file != NULL) {
-    filler(buf, file->path + 1, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+    if (strcmp(path, "/") == 0) {
+      if (file->path[0] == '/' && strchr(file->path + 1, '/') == NULL) {
+        filler(buf, file->path + 1, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+      }
+    } else {
+      size_t len = strlen(path);
+
+      if (strncmp(file->path, path, len) == 0 && file->path[len] == '/') {
+        const char* base_name = file->path + len + 1;
+
+        if (strchr(base_name, '/') == NULL) {
+          filler(buf, base_name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+        }
+      }
+    }
+
     file = file->next;
   }
 
@@ -230,6 +249,27 @@ static int ram_unlink(const char* path) {
   return -ENOENT;
 }
 
+static int ram_mkdir(const char* path, mode_t mode) {
+  if (find_file(path) != NULL)
+    return -EEXIST;
+
+  struct ram_file* new_dir = (struct ram_file*)malloc(sizeof(struct ram_file));
+  if (new_dir == NULL)
+    return -ENOMEM;
+
+  strncpy(new_dir->path, path, sizeof(new_dir->path) - 1);
+  new_dir->path[255] = '\0';
+  new_dir->content = NULL;
+  new_dir->size = 0;
+
+  new_dir->mode = S_IFDIR | mode;
+
+  new_dir->next = File_list;
+  File_list = new_dir;
+
+  return 0;
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
@@ -240,6 +280,7 @@ static const struct fuse_operations ram_oper = {
     .read = ram_read,
     .chmod = ram_chmod,
     .unlink = ram_unlink,
+    .mkdir = ram_mkdir,
 };
 
 int main(int argc, char* argv[]) {
