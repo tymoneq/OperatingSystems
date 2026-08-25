@@ -1,12 +1,13 @@
-#include <asm-generic/errno-base.h>
-#include <stdlib.h>
 #define FUSE_USE_VERSION 31
+// fuse must be first
 
+#include <asm-generic/errno-base.h>
 #include <asm-generic/errno.h>
 #include <fcntl.h>
 #include <fuse.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -167,6 +168,42 @@ static int ram_write(const char* path,
   return size;
 }
 
+int ram_read(const char* path,
+             char* buf,
+             size_t size,
+             off_t offset,
+             struct fuse_file_info* fs) {
+  (void)fs;
+
+  struct ram_file* file = find_file(path);
+  if (file == NULL)
+    return -ENOENT;
+
+  if (offset >= file->size)
+    return 0;
+
+  size_t read_size = size + offset;
+
+  if (read_size > file->size)
+    size = file->size - offset;
+
+  memcpy(buf, file->content + offset, size);
+
+  return size;
+}
+
+static int ram_chmod(const char* path, mode_t mode, struct fuse_file_info* fi) {
+  (void)fi;
+
+  struct ram_file* file = find_file(path);
+  if (file == NULL)
+    return -ENOENT;
+
+  file->mode = mode;
+
+  return 0;
+}
+
 static const struct fuse_operations ram_oper = {
     .getattr = ram_getattr,
     .create = ram_create,
@@ -174,6 +211,8 @@ static const struct fuse_operations ram_oper = {
     .readdir = ram_readdir,
     .destroy = ram_destroy,
     .write = ram_write,
+    .read = ram_read,
+    .chmod = ram_chmod,
 };
 
 int main(int argc, char* argv[]) {
