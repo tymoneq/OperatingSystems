@@ -17,16 +17,79 @@ static struct inode inode_table[MAX_NUMBER_OF_INODES];
 static unsigned int next_inode_id = 3;  // Inode 1 is often system, 2 is Root
 static struct dir_entry* root_dentries = NULL;
 
+static struct dir_entry* compare_names(const char* buffor,
+                                       struct dir_entry* current_dir) {
+  struct dir_entry* current_file = current_dir;
+
+  while (current_file != NULL) {
+    if (strcmp(buffor, current_file->name) == 0) {
+      return current_file;
+    }
+    current_file = current_file->next;
+  }
+  return NULL;
+}
+
 static struct dir_entry* find_file(const char* path) {
   struct dir_entry* current_dir_entries = root_dentries;
-  while (current_dir_entries != NULL) {
-    if (strcmp(path, current_dir_entries->name) == 0) {
-      return current_dir_entries;
+  const char* current_letter = path;
+  size_t len = 0;
+  char buffer[MAX_FILE_NAME];
+  if (path[0] == '/')
+    current_letter++;
+
+  while (*current_letter != '\0') {
+    if (*current_letter == '/') {
+      buffer[len] = '\0';
+      len = 0;
+
+      struct dir_entry* dir = compare_names(buffer, current_dir_entries);
+      if (dir == NULL) {
+        return NULL;
+      }
+      //  changing current dir
+      unsigned int ino = dir->ino;
+      current_dir_entries = inode_table[ino].dir_entry;
+
+    } else {
+      buffer[len] = *current_letter;
+      len++;
+      if (len >= MAX_FILE_NAME)
+        return NULL;
     }
-    current_dir_entries = current_dir_entries->next;
+    current_letter++;
+  }
+  if (len != 0) {
+    buffer[len] = '\0';
   }
 
-  return NULL;
+  return compare_names(buffer, current_dir_entries);
+}
+
+static char* get_file_name_from_path(const char* path) {
+  const char* current_letter = path;
+  size_t len = 0;
+  char* buffer = (char*)malloc(sizeof(char) * MAX_FILE_NAME);
+  if (path[0] == '/')
+    current_letter++;
+  while (*current_letter != '\0') {
+    if (*current_letter == '/') {
+      buffer[len] = '\0';
+      len = 0;
+
+    } else {
+      buffer[len] = *current_letter;
+      len++;
+      if (len >= MAX_FILE_NAME)
+        return NULL;
+    }
+    current_letter++;
+  }
+  if (len != 0) {
+    buffer[len] = '\0';
+  }
+
+  return buffer;
 }
 
 static int inode_create(const char* path,
@@ -49,7 +112,10 @@ static int inode_create(const char* path,
 
   new_file->ino = next_inode_id;
   next_inode_id += 1;
-  strncpy(new_file->name, path, sizeof(new_file->name) - 1);
+
+  char* file_name = get_file_name_from_path(path);
+  strncpy(new_file->name, file_name, sizeof(new_file->name) - 1);
+  free(file_name);
 
   inode_table[new_file->ino].ino = new_file->ino;
   inode_table[new_file->ino].mode = mode;
@@ -57,7 +123,8 @@ static int inode_create(const char* path,
   inode_table[new_file->ino].link_count = 1;
   clock_gettime(CLOCK_REALTIME, &inode_table[new_file->ino].a_time);
   clock_gettime(CLOCK_REALTIME, &inode_table[new_file->ino].m_time);
-  inode_table[new_file->ino].data = NULL;
+  inode_table[new_file->ino].file_data = NULL;
+  inode_table[new_file->ino].dir_entry = NULL;
 
   new_file->next = root_dentries;
   root_dentries = new_file;
@@ -128,13 +195,15 @@ static int inode_readdir(const char* path,
   struct dir_entry* files = root_dentries;
 
   while (files != NULL) {
-    filler(buf, files->name + 1, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+    filler(buf, files->name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
     files = files->next;
   }
   return 0;
 }
-
+static int inode_mkdir(const char* path, mode_t mode) {
+  return 0;
+}
 static void inode_destroy(void* private_data) {
   (void)private_data;
 
@@ -144,8 +213,8 @@ static void inode_destroy(void* private_data) {
   while (current_file != NULL) {
     next_file = current_file->next;
 
-    if (inode_table[current_file->ino].data != NULL) {
-      free(inode_table[current_file->ino].data);
+    if (inode_table[current_file->ino].file_data != NULL) {
+      free(inode_table[current_file->ino].file_data);
     }
 
     free(current_file);
@@ -159,6 +228,7 @@ static const struct fuse_operations ram_oper = {
     .getattr = inode_getattr,
     .readdir = inode_readdir,
     .destroy = inode_destroy,
+    .mkdir = inode_mkdir,
 };
 
 int main(int argc, char* argv[]) {

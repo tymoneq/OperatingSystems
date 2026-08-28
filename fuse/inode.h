@@ -6,6 +6,12 @@
 #define MAX_FILE_NAME 256
 #define MAX_NUMBER_OF_INODES 256
 
+struct dir_entry {
+  char name[MAX_FILE_NAME];
+  unsigned int ino;
+  struct dir_entry *next;
+};
+
 struct inode {
   unsigned int ino;
   mode_t mode;
@@ -14,12 +20,9 @@ struct inode {
   struct timespec a_time; // last access time
   struct timespec m_time; // last modify time
 
-  char *data;
-};
-
-struct dir_entry {
-  char name[MAX_FILE_NAME];
-  unsigned int ino;
-  struct dir_entry *next;
+  union {
+    char *file_data;
+    struct dir_entry *dir_entry;
+  };
 };
 
