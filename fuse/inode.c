@@ -1,12 +1,13 @@
+#define FUSE_USE_VERSION 31
+// fuse must be first
+
 #include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <bits/time.h>
 #include <fcntl.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <string.h>
 #include <time.h>
-#define FUSE_USE_VERSION 31
-// fuse must be first
 
 #include <stdlib.h>
 #include "fuse.h"
@@ -34,7 +35,7 @@ static int inode_create(const char* path,
   (void)fi;
 
   struct dir_entry* file = find_file(path);
-  if (file == NULL)
+  if (file != NULL)
     return -EEXIST;
 
   if (next_inode_id >= MAX_NUMBER_OF_INODES)
@@ -48,7 +49,7 @@ static int inode_create(const char* path,
 
   new_file->ino = next_inode_id;
   next_inode_id += 1;
-  strncpy(new_file->name, file->name, sizeof(file->name));
+  strncpy(new_file->name, path, sizeof(new_file->name) - 1);
 
   inode_table[new_file->ino].ino = new_file->ino;
   inode_table[new_file->ino].mode = mode;
@@ -104,12 +105,46 @@ static int inode_getattr(const char* path,
   }
 }
 
+static int inode_readdir(const char* path,
+                         void* buf,
+                         fuse_fill_dir_t filler,
+                         off_t offset,
+                         struct fuse_file_info* fi,
+                         enum fuse_readdir_flags flags) {
+  (void)offset;
+  (void)fi;
+  (void)flags;
+
+  if (strcmp(path, "/") != 0) {
+    struct dir_entry* dir = find_file(path);
+
+    if (!dir)
+      return -ENONET;
+  }
+
+  filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+  filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+
+  struct dir_entry* files = root_dentries;
+
+  while (files != NULL) {
+    filler(buf, files->name + 1, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+
+    files = files->next;
+  }
+  return 0;
+}
+
 static const struct fuse_operations ram_oper = {
     .create = inode_create,
     .utimens = inode_utimens,
     .getattr = inode_getattr,
+    .readdir = inode_readdir,
 };
 
 int main(int argc, char* argv[]) {
+  struct dir_entry* new_dentry = malloc(sizeof(struct dir_entry));
+  if (new_dentry == NULL)
+    return -ENOMEM;
   return fuse_main(argc, argv, &ram_oper, NULL);
 }
