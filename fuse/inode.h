@@ -23,9 +23,3 @@ struct dir_entry {
   struct dir_entry *next;
 };
 
-struct InodeTable {
-  char *inodeTable;
-  unsigned int next_inode;
-};
-
-int InitTable(struct InodeTable *table);
