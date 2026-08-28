@@ -135,11 +135,30 @@ static int inode_readdir(const char* path,
   return 0;
 }
 
+static void inode_destroy(void* private_data) {
+  (void)private_data;
+
+  struct dir_entry* current_file = root_dentries;
+  struct dir_entry* next_file = NULL;
+
+  while (current_file != NULL) {
+    next_file = current_file->next;
+
+    if (inode_table[current_file->ino].data != NULL) {
+      free(inode_table[current_file->ino].data);
+    }
+
+    free(current_file);
+    current_file = next_file;
+  }
+}
+
 static const struct fuse_operations ram_oper = {
     .create = inode_create,
     .utimens = inode_utimens,
     .getattr = inode_getattr,
     .readdir = inode_readdir,
+    .destroy = inode_destroy,
 };
 
 int main(int argc, char* argv[]) {
