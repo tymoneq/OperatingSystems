@@ -25,4 +25,3 @@ struct inode {
     struct dir_entry *dir_entry;
   };
 };
-

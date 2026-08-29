@@ -1,3 +1,4 @@
+#include <sys/stat.h>
 #define FUSE_USE_VERSION 31
 // fuse must be first
 
@@ -30,11 +31,14 @@ static struct dir_entry* compare_names(const char* buffor,
   return NULL;
 }
 
-static struct dir_entry* find_file(const char* path) {
-  struct dir_entry* current_dir_entries = root_dentries;
+static struct dir_entry* find_file(const char* path,
+                                   struct dir_entry*** out_target_list) {
+  struct dir_entry** current_list_head = &root_dentries;
+  out_target_list = &current_list_head;
   const char* current_letter = path;
   size_t len = 0;
   char buffer[MAX_FILE_NAME];
+
   if (path[0] == '/')
     current_letter++;
 
@@ -43,14 +47,16 @@ static struct dir_entry* find_file(const char* path) {
       buffer[len] = '\0';
       len = 0;
 
-      struct dir_entry* dir = compare_names(buffer, current_dir_entries);
+      struct dir_entry* dir = compare_names(buffer, *current_list_head);
       if (dir == NULL) {
         return NULL;
       }
       //  changing current dir
       unsigned int ino = dir->ino;
-      current_dir_entries = inode_table[ino].dir_entry;
 
+      if (inode_table[ino].mode & S_IFDIR) {
+        current_list_head = &inode_table[ino].dir_entry;
+      }
     } else {
       buffer[len] = *current_letter;
       len++;
@@ -62,16 +68,19 @@ static struct dir_entry* find_file(const char* path) {
   if (len != 0) {
     buffer[len] = '\0';
   }
+  *out_target_list = current_list_head;
 
-  return compare_names(buffer, current_dir_entries);
+  return compare_names(buffer, *current_list_head);
 }
 
-static char* get_file_name_from_path(const char* path) {
+static void get_file_name_from_path(const char* path, char* buffer) {
   const char* current_letter = path;
   size_t len = 0;
-  char* buffer = (char*)malloc(sizeof(char) * MAX_FILE_NAME);
+  buffer[0] = '\0';
+
   if (path[0] == '/')
     current_letter++;
+
   while (*current_letter != '\0') {
     if (*current_letter == '/') {
       buffer[len] = '\0';
@@ -80,8 +89,10 @@ static char* get_file_name_from_path(const char* path) {
     } else {
       buffer[len] = *current_letter;
       len++;
-      if (len >= MAX_FILE_NAME)
-        return NULL;
+      if (len >= MAX_FILE_NAME) {
+        buffer[MAX_FILE_NAME - 1] = '\0';
+        return;
+      }
     }
     current_letter++;
   }
@@ -89,7 +100,7 @@ static char* get_file_name_from_path(const char* path) {
     buffer[len] = '\0';
   }
 
-  return buffer;
+  buffer[MAX_FILE_NAME - 1] = '\0';
 }
 
 static int inode_create(const char* path,
@@ -97,7 +108,9 @@ static int inode_create(const char* path,
                         struct fuse_file_info* fi) {
   (void)fi;
 
-  struct dir_entry* file = find_file(path);
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
+
   if (file != NULL)
     return -EEXIST;
 
@@ -113,9 +126,7 @@ static int inode_create(const char* path,
   new_file->ino = next_inode_id;
   next_inode_id += 1;
 
-  char* file_name = get_file_name_from_path(path);
-  strncpy(new_file->name, file_name, sizeof(new_file->name) - 1);
-  free(file_name);
+  get_file_name_from_path(path, new_file->name);
 
   inode_table[new_file->ino].ino = new_file->ino;
   inode_table[new_file->ino].mode = mode;
@@ -126,8 +137,8 @@ static int inode_create(const char* path,
   inode_table[new_file->ino].file_data = NULL;
   inode_table[new_file->ino].dir_entry = NULL;
 
-  new_file->next = root_dentries;
-  root_dentries = new_file;
+  new_file->next = *parent_dir;
+  *parent_dir = new_file;
 
   return 0;
 }
@@ -137,11 +148,13 @@ static int inode_utimens(const char* path,
                          struct fuse_file_info* fi) {
   (void)fi;
 
-  struct dir_entry* file = find_file(path);
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
   // Make sure the file or root directory actually exists first
-  if (strcmp(path, "/") != 0 && file == NULL) {
+  if (strcmp(path, "/") != 0 && file != NULL) {
     return -ENOENT;
   }
+
   clock_gettime(CLOCK_REALTIME, &inode_table[file->ino].a_time);
   clock_gettime(CLOCK_REALTIME, &inode_table[file->ino].m_time);
 
@@ -154,17 +167,21 @@ static int inode_getattr(const char* path,
   (void)fi;
 
   memset(stbuf, 0, sizeof(struct stat));
+
   if (strcmp(path, "/") == 0) {
     stbuf->st_mode = S_IFDIR | 0755;
     stbuf->st_nlink = 2;
     return 0;
   }
 
-  struct dir_entry* file = find_file(path);
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
+  if (file == NULL)
+    return -ENOENT;
 
   if (file != NULL) {
-    stbuf->st_mode = inode_table[file->ino].mode;
     stbuf->st_nlink = 1;
+    stbuf->st_mode = inode_table[file->ino].mode;
     stbuf->st_size = inode_table[file->ino].size;
     return 0;
   } else {
@@ -172,6 +189,7 @@ static int inode_getattr(const char* path,
   }
 }
 
+// add oder dir reading
 static int inode_readdir(const char* path,
                          void* buf,
                          fuse_fill_dir_t filler,
@@ -182,26 +200,56 @@ static int inode_readdir(const char* path,
   (void)fi;
   (void)flags;
 
-  if (strcmp(path, "/") != 0) {
-    struct dir_entry* dir = find_file(path);
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
 
-    if (!dir)
+  if (strcmp(path, "/") != 0) {
+    if (!file || !(inode_table[file->ino].mode & S_IFDIR))
       return -ENONET;
   }
 
   filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
   filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
-  struct dir_entry* files = root_dentries;
+  while (parent_dir != NULL) {
+    filler(buf, (*parent_dir)->name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
-  while (files != NULL) {
-    filler(buf, files->name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
-
-    files = files->next;
+    *parent_dir = (*parent_dir)->next;
   }
   return 0;
 }
 static int inode_mkdir(const char* path, mode_t mode) {
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
+
+  if (file != NULL)
+    return -EEXIST;
+
+  if (next_inode_id >= MAX_NUMBER_OF_INODES)
+    return -ENOSPC;
+
+  struct dir_entry* new_dir =
+      (struct dir_entry*)malloc(sizeof(struct dir_entry));
+
+  if (new_dir == NULL)
+    return -ENOMEM;
+
+  get_file_name_from_path(path, new_dir->name);
+
+  new_dir->ino = next_inode_id;
+  next_inode_id += 1;
+
+  inode_table[new_dir->ino].ino = new_dir->ino;
+  inode_table[new_dir->ino].mode = mode | S_IFDIR;
+  inode_table[new_dir->ino].size = 0;
+  inode_table[new_dir->ino].link_count = 1;
+  clock_gettime(CLOCK_REALTIME, &inode_table[new_dir->ino].a_time);
+  clock_gettime(CLOCK_REALTIME, &inode_table[new_dir->ino].m_time);
+  inode_table[new_dir->ino].file_data = NULL;
+  inode_table[new_dir->ino].dir_entry = NULL;
+
+  new_dir->next = *parent_dir;
+  *parent_dir = new_dir;
   return 0;
 }
 static void inode_destroy(void* private_data) {
