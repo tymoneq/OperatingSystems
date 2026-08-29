@@ -209,18 +209,24 @@ static int inode_readdir(const char* path,
   struct dir_entry** parent_dir = NULL;
   struct dir_entry* file = find_file(path, &parent_dir);
 
-  if (strcmp(path, "/") != 0) {
-    if (!file || !(inode_table[file->ino].mode & S_IFDIR))
-      return -ENONET;
-  }
+  struct dir_entry* current = NULL;
 
+  if (strcmp(path, "/") == 0) {
+    current = root_dentries;
+  } else {
+    if (!file || !(inode_table[file->ino].mode & S_IFDIR)) {
+      return -ENOENT;
+    }
+
+    current = inode_table[file->ino].dir_entry;
+  }
   filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
   filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
-  while (*parent_dir != NULL) {
-    filler(buf, (*parent_dir)->name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+  while (current != NULL) {
+    filler(buf, current->name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
-    *parent_dir = (*parent_dir)->next;
+    current = current->next;
   }
   return 0;
 }
@@ -260,6 +266,10 @@ static int inode_mkdir(const char* path, mode_t mode) {
 }
 static void inode_destroy(void* private_data) {
   (void)private_data;
+
+  for (size_t i = 0; i < next_inode_id; i++) {
+    // add better clearing memory
+  }
 
   struct dir_entry* current_file = root_dentries;
   struct dir_entry* next_file = NULL;
