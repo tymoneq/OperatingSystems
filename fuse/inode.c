@@ -34,7 +34,7 @@ static struct dir_entry* compare_names(const char* buffor,
 static struct dir_entry* find_file(const char* path,
                                    struct dir_entry*** out_target_list) {
   struct dir_entry** current_list_head = &root_dentries;
-  out_target_list = &current_list_head;
+  *out_target_list = current_list_head;
   const char* current_letter = path;
   size_t len = 0;
   char buffer[MAX_FILE_NAME];
@@ -56,6 +56,7 @@ static struct dir_entry* find_file(const char* path,
 
       if (inode_table[ino].mode & S_IFDIR) {
         current_list_head = &inode_table[ino].dir_entry;
+        *out_target_list = current_list_head;
       }
     } else {
       buffer[len] = *current_letter;
@@ -129,7 +130,7 @@ static int inode_create(const char* path,
   get_file_name_from_path(path, new_file->name);
 
   inode_table[new_file->ino].ino = new_file->ino;
-  inode_table[new_file->ino].mode = mode;
+  inode_table[new_file->ino].mode = mode | S_IFREG;
   inode_table[new_file->ino].size = 0;
   inode_table[new_file->ino].link_count = 1;
   clock_gettime(CLOCK_REALTIME, &inode_table[new_file->ino].a_time);
@@ -151,7 +152,7 @@ static int inode_utimens(const char* path,
   struct dir_entry** parent_dir = NULL;
   struct dir_entry* file = find_file(path, &parent_dir);
   // Make sure the file or root directory actually exists first
-  if (strcmp(path, "/") != 0 && file != NULL) {
+  if (strcmp(path, "/") != 0 && file == NULL) {
     return -ENOENT;
   }
 
@@ -171,6 +172,7 @@ static int inode_getattr(const char* path,
   if (strcmp(path, "/") == 0) {
     stbuf->st_mode = S_IFDIR | 0755;
     stbuf->st_nlink = 2;
+    stbuf->st_ino = 2;
     return 0;
   }
 
@@ -180,16 +182,20 @@ static int inode_getattr(const char* path,
     return -ENOENT;
 
   if (file != NULL) {
-    stbuf->st_nlink = 1;
+    stbuf->st_ino = inode_table[file->ino].ino;
     stbuf->st_mode = inode_table[file->ino].mode;
     stbuf->st_size = inode_table[file->ino].size;
+    stbuf->st_nlink = inode_table[file->ino].link_count;
+
+    // 4. Map the timestamps so 'touch' and 'ls' work properly
+    stbuf->st_atim = inode_table[file->ino].a_time;
+    stbuf->st_mtim = inode_table[file->ino].m_time;
     return 0;
   } else {
     return -ENOENT;
   }
 }
 
-// add oder dir reading
 static int inode_readdir(const char* path,
                          void* buf,
                          fuse_fill_dir_t filler,
@@ -211,7 +217,7 @@ static int inode_readdir(const char* path,
   filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
   filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
-  while (parent_dir != NULL) {
+  while (*parent_dir != NULL) {
     filler(buf, (*parent_dir)->name, NULL, 0, FUSE_FILL_DIR_DEFAULTS);
 
     *parent_dir = (*parent_dir)->next;
@@ -280,8 +286,8 @@ static const struct fuse_operations ram_oper = {
 };
 
 int main(int argc, char* argv[]) {
-  struct dir_entry* new_dentry = malloc(sizeof(struct dir_entry));
-  if (new_dentry == NULL)
-    return -ENOMEM;
+  inode_table[2].mode = S_IFDIR | 0755;
+  inode_table[2].dir_entry = root_dentries;
+
   return fuse_main(argc, argv, &ram_oper, NULL);
 }
