@@ -23,7 +23,7 @@ static size_t total_used_bytes = 0;
 
 static void insert_file_metadata(unsigned int ino, mode_t mode) {
   inode_table[ino].ino = ino;
-  inode_table[ino].mode = mode | S_IFREG;
+  inode_table[ino].mode = mode;
   inode_table[ino].size = 0;
   inode_table[ino].link_count = 1;
   clock_gettime(CLOCK_REALTIME, &inode_table[ino].a_time);
@@ -436,6 +436,56 @@ static int inode_link(const char* from, const char* to) {
   return 0;
 }
 
+// Note: 'target' is the path string being saved. 'linkpath' is where the new
+// file goes.
+static int inode_symlink(const char* target, const char* linkpath) {
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* symlink = find_file(linkpath, &parent_dir);
+
+  if (symlink != NULL)
+    return -EEXIST;
+
+  if (parent_dir == NULL)
+    return -ENOENT;
+
+  if (next_inode_id >= MAX_NUMBER_OF_INODES)
+    return -ENOSPC;
+
+  symlink = (struct dir_entry*)malloc(sizeof(struct dir_entry));
+  if (symlink == NULL)
+    return -ENOMEM;
+
+  symlink->ino = next_inode_id;
+  next_inode_id++;
+  get_file_name_from_path(linkpath, symlink->name);
+
+  insert_file_metadata(symlink->ino, S_IFLNK | 0777);
+
+  inode_table[symlink->ino].size = strlen(target);
+  inode_table[symlink->ino].file_data = strdup(target);
+
+  symlink->next = *parent_dir;
+  *parent_dir = symlink;
+  return 0;
+}
+
+static int inode_readlink(const char* path, char* buf, size_t size) {
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
+
+  if (file == NULL)
+    return -ENOENT;
+
+  if (!(inode_table[file->ino].mode & S_IFLNK))
+    return -EINVAL;
+
+  if (inode_table[file->ino].file_data == NULL)
+    return -ENOENT;
+
+  strncpy(buf, (char*)inode_table[file->ino].file_data, size - 1);
+  buf[size - 1] = '\0';
+  return 0;
+}
 static const struct fuse_operations ram_oper = {
     .create = inode_create,
     .utimens = inode_utimens,
@@ -450,6 +500,8 @@ static const struct fuse_operations ram_oper = {
     .rmdir = inode_rmdir,
     .unlink = inode_unlink,
     .link = inode_link,
+    .symlink = inode_symlink,
+    .readlink = inode_readlink,
 };
 
 int main(int argc, char* argv[]) {
