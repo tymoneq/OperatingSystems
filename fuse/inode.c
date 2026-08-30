@@ -388,7 +388,44 @@ static int inode_chmod(const char* path,
   return 0;
 }
 
-static int inode_unlink(const char* path) {}
+static int inode_unlink(const char* path) {
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
+
+  if (file == NULL)
+    return -ENOENT;
+
+  if ((inode_table[file->ino].mode & S_IFDIR) &&
+      inode_table[file->ino].dir_entry != NULL)
+    return -ENOTEMPTY;
+
+  inode_table[file->ino].link_count--;
+
+  if (inode_table[file->ino].link_count > 0)
+    return 0;
+
+  struct dir_entry* current_entry = *parent_dir;
+  struct dir_entry* prev_entry = NULL;
+
+  while (current_entry != NULL) {
+    if (file->ino == current_entry->ino) {
+      if (prev_entry == NULL) {
+        *parent_dir = current_entry->next;
+      } else {
+        prev_entry = current_entry->next;
+      }
+      if (inode_table[current_entry->ino].file_data != NULL)
+        free(inode_table[current_entry->ino].file_data);
+
+      free(current_entry);
+      return 0;
+    }
+    prev_entry = current_entry;
+    current_entry = current_entry->next;
+  }
+
+  return -ENOENT;
+}
 
 static int inode_rmdir(const char* path) {
   struct dir_entry** parent = NULL;
