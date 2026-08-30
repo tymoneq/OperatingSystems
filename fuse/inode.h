@@ -5,6 +5,8 @@
 
 #define MAX_FILE_NAME 256
 #define MAX_NUMBER_OF_INODES 256
+#define RAMFS_BLOCK_SIZE 4096
+#define RAMFS_MAX_BYTES (50 * 1024 * 1024)
 
 struct dir_entry {
   char name[MAX_FILE_NAME];

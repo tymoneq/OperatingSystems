@@ -17,6 +17,8 @@
 static struct inode inode_table[MAX_NUMBER_OF_INODES];
 static unsigned int next_inode_id = 3;  // Inode 1 is often system, 2 is Root
 static struct dir_entry* root_dentries = NULL;
+static size_t total_used_bytes = 0;
+
 
 static struct dir_entry* compare_names(const char* buffor,
                                        struct dir_entry* current_dir) {
@@ -266,23 +268,22 @@ static int inode_mkdir(const char* path, mode_t mode) {
 }
 static void inode_destroy(void* private_data) {
   (void)private_data;
-
-  for (size_t i = 0; i < next_inode_id; i++) {
-    // add better clearing memory
-  }
-
-  struct dir_entry* current_file = root_dentries;
+  struct dir_entry* current_file = NULL;
   struct dir_entry* next_file = NULL;
 
-  while (current_file != NULL) {
-    next_file = current_file->next;
+  for (size_t i = 0; i < next_inode_id; i++) {
+    if (inode_table[i].mode & S_IFDIR) {
+      current_file = inode_table[i].dir_entry;
+      while (current_file != NULL) {
+        next_file = current_file->next;
+        free(current_file);
+        current_file = next_file;
+      }
 
-    if (inode_table[current_file->ino].file_data != NULL) {
-      free(inode_table[current_file->ino].file_data);
+    } else if (inode_table[i].mode & S_IFREG &&
+               inode_table[i].file_data != NULL) {
+      free(inode_table[i].file_data);
     }
-
-    free(current_file);
-    current_file = next_file;
   }
 }
 
