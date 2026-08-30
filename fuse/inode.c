@@ -21,6 +21,17 @@ static unsigned int next_inode_id = 3;  // Inode 1 is often system, 2 is Root
 static struct dir_entry* root_dentries = NULL;
 static size_t total_used_bytes = 0;
 
+static void insert_file_metadata(unsigned int ino, mode_t mode) {
+  inode_table[ino].ino = ino;
+  inode_table[ino].mode = mode | S_IFREG;
+  inode_table[ino].size = 0;
+  inode_table[ino].link_count = 1;
+  clock_gettime(CLOCK_REALTIME, &inode_table[ino].a_time);
+  clock_gettime(CLOCK_REALTIME, &inode_table[ino].m_time);
+  inode_table[ino].file_data = NULL;
+  inode_table[ino].dir_entry = NULL;
+}
+
 static struct dir_entry* compare_names(const char* buffor,
                                        struct dir_entry* current_dir) {
   struct dir_entry* current_file = current_dir;
@@ -134,14 +145,7 @@ static int inode_create(const char* path,
 
   get_file_name_from_path(path, new_file->name);
 
-  inode_table[new_file->ino].ino = new_file->ino;
-  inode_table[new_file->ino].mode = mode | S_IFREG;
-  inode_table[new_file->ino].size = 0;
-  inode_table[new_file->ino].link_count = 1;
-  clock_gettime(CLOCK_REALTIME, &inode_table[new_file->ino].a_time);
-  clock_gettime(CLOCK_REALTIME, &inode_table[new_file->ino].m_time);
-  inode_table[new_file->ino].file_data = NULL;
-  inode_table[new_file->ino].dir_entry = NULL;
+  insert_file_metadata(new_file->ino, mode | S_IFREG);
 
   new_file->next = *parent_dir;
   *parent_dir = new_file;
@@ -253,15 +257,7 @@ static int inode_mkdir(const char* path, mode_t mode) {
 
   new_dir->ino = next_inode_id;
   next_inode_id += 1;
-
-  inode_table[new_dir->ino].ino = new_dir->ino;
-  inode_table[new_dir->ino].mode = mode | S_IFDIR;
-  inode_table[new_dir->ino].size = 0;
-  inode_table[new_dir->ino].link_count = 1;
-  clock_gettime(CLOCK_REALTIME, &inode_table[new_dir->ino].a_time);
-  clock_gettime(CLOCK_REALTIME, &inode_table[new_dir->ino].m_time);
-  inode_table[new_dir->ino].file_data = NULL;
-  inode_table[new_dir->ino].dir_entry = NULL;
+  insert_file_metadata(new_dir->ino, mode | S_IFDIR);
 
   new_dir->next = *parent_dir;
   *parent_dir = new_dir;
