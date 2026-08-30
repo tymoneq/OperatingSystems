@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #define FUSE_USE_VERSION 31
@@ -40,6 +41,8 @@ static struct dir_entry* find_file(const char* path,
   const char* current_letter = path;
   size_t len = 0;
   char buffer[MAX_FILE_NAME];
+
+  buffer[0] = '\0';
 
   if (path[0] == '/')
     current_letter++;
@@ -180,8 +183,6 @@ static int inode_getattr(const char* path,
 
   struct dir_entry** parent_dir = NULL;
   struct dir_entry* file = find_file(path, &parent_dir);
-  if (file == NULL)
-    return -ENOENT;
 
   if (file != NULL) {
     stbuf->st_ino = inode_table[file->ino].ino;
@@ -376,6 +377,68 @@ static int inode_statfs(const char* path, struct statvfs* stbuf) {
 
   return 0;
 }
+static int inode_chmod(const char* path,
+                       mode_t mode,
+                       struct fuse_file_info* fi) {
+  (void)fi;
+
+  struct dir_entry** parent = NULL;
+  struct dir_entry* file = find_file(path, &parent);
+
+  if (file == NULL)
+    return -ENOENT;
+
+  inode_table[file->ino].mode = mode;
+  return 0;
+}
+
+static int inode_unlink(const char* path) {}
+
+static int inode_rmdir(const char* path) {
+  struct dir_entry** parent = NULL;
+  struct dir_entry* file = find_file(path, &parent);
+
+  if (file == NULL)
+    return -ENOENT;
+
+  if (!(inode_table[file->ino].mode & S_IFDIR))
+    return -ENOTDIR;
+
+  return inode_unlink(path);
+}
+
+static int inode_link(const char* from, const char* to) {
+  struct dir_entry** parent_dir = NULL;
+
+  struct dir_entry* file = find_file(from, &parent_dir);
+  struct dir_entry* hardlink = find_file(to, &parent_dir);
+
+  if (file == NULL)
+    return -ENOENT;
+
+  if (inode_table[file->ino].mode & S_IFDIR)
+    return -EPERM;
+
+  if (hardlink != NULL)
+    return -EEXIST;
+
+  if (parent_dir == NULL)
+    return -ENOENT;
+
+  hardlink = (struct dir_entry*)malloc(sizeof(struct dir_entry));
+  if (hardlink == NULL) {
+    return -ENOMEM;
+  }
+
+  hardlink->ino = file->ino;
+  get_file_name_from_path(to, hardlink->name);
+  inode_table[hardlink->ino].link_count += 1;
+
+  hardlink->next = *parent_dir;
+  *parent_dir = hardlink;
+
+  return 0;
+}
 
 static const struct fuse_operations ram_oper = {
     .create = inode_create,
@@ -387,6 +450,10 @@ static const struct fuse_operations ram_oper = {
     .statfs = inode_statfs,
     .write = inode_write,
     .read = inode_read,
+    .chmod = inode_chmod,
+    .rmdir = inode_rmdir,
+    .unlink = inode_unlink,
+    .link = inode_link,
 };
 
 int main(int argc, char* argv[]) {
