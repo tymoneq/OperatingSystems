@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -9,10 +10,9 @@
 #include <bits/time.h>
 #include <fcntl.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#include <stdlib.h>
 #include "fuse.h"
 #include "inode.h"
 
@@ -289,16 +289,15 @@ static int inode_write(const char* path,
                        size_t size,
                        off_t offset,
                        struct fuse_file_info* fi) {
-  (void)fi;
+  (void)path;
 
-  struct dir_entry** parent_dir = NULL;
-  struct dir_entry* file = find_file(path, &parent_dir);
+  unsigned int inode = (unsigned int)fi->fh;
 
-  if (file == NULL) {
+  if (inode < 2) {
     return -ENOENT;
   }
 
-  if (inode_table[file->ino].mode & S_IFDIR)
+  if (inode_table[inode].mode & S_IFDIR)
     return -ENOENT;
 
   size_t new_size = offset + size;
@@ -306,20 +305,20 @@ static int inode_write(const char* path,
   if (new_size + total_used_bytes > RAMFS_MAX_BYTES)
     return -ENOMEM;
 
-  if (new_size > inode_table[file->ino].size) {
-    char* new_content = realloc(inode_table[file->ino].file_data, new_size);
+  if (new_size > inode_table[inode].size) {
+    char* new_content = realloc(inode_table[inode].file_data, new_size);
     if (new_content == NULL)
       return -ENOMEM;
 
-    if ((size_t)offset > inode_table[file->ino].size)
-      memset(new_content + inode_table[file->ino].size, 0, offset);
+    if ((size_t)offset > inode_table[inode].size)
+      memset(new_content + inode_table[inode].size, 0, offset);
 
-    inode_table[file->ino].size = new_size;
-    inode_table[file->ino].file_data = new_content;
-    total_used_bytes += new_size - inode_table[file->ino].size;
+    inode_table[inode].size = new_size;
+    inode_table[inode].file_data = new_content;
+    total_used_bytes += new_size - inode_table[inode].size;
   }
 
-  memcpy(inode_table[file->ino].file_data + offset, buf, size);
+  memcpy(inode_table[inode].file_data + offset, buf, size);
 
   return size;
 }
@@ -329,22 +328,21 @@ static int inode_read(const char* path,
                       size_t size,
                       off_t offset,
                       struct fuse_file_info* fs) {
-  (void)fs;
-  struct dir_entry** parent_dir = NULL;
-  struct dir_entry* file = find_file(path, &parent_dir);
+  (void)path;
+  unsigned int inode = (unsigned int)fs->fh;
 
-  if (file == NULL)
+  if (inode < 2)
     return -ENOENT;
 
-  if (offset >= inode_table[file->ino].size)
+  if (offset >= inode_table[inode].size)
     return 0;
 
   size_t read_size = offset + size;
 
-  if (read_size > inode_table[file->ino].size)
-    size = inode_table[file->ino].size - offset;
+  if (read_size > inode_table[inode].size)
+    size = inode_table[inode].size - offset;
 
-  memcpy(buf, inode_table[file->ino].file_data + offset, size);
+  memcpy(buf, inode_table[inode].file_data + offset, size);
   return size;
 }
 
@@ -523,23 +521,47 @@ static int inode_readlink(const char* path, char* buf, size_t size) {
   buf[size - 1] = '\0';
   return 0;
 }
-static const struct fuse_operations ram_oper = {
-    .create = inode_create,
-    .utimens = inode_utimens,
-    .getattr = inode_getattr,
-    .readdir = inode_readdir,
-    .destroy = inode_destroy,
-    .mkdir = inode_mkdir,
-    .statfs = inode_statfs,
-    .write = inode_write,
-    .read = inode_read,
-    .chmod = inode_chmod,
-    .rmdir = inode_rmdir,
-    .unlink = inode_unlink,
-    .link = inode_link,
-    .symlink = inode_symlink,
-    .readlink = inode_readlink,
-};
+
+static int inode_open(const char* path, struct fuse_file_info* fi) {
+  struct dir_entry** parent_dir = NULL;
+  struct dir_entry* file = find_file(path, &parent_dir);
+
+  if (file == NULL)
+    return -ENOENT;
+
+  if (inode_table[file->ino].mode & S_IFDIR)
+    return -EISDIR;
+
+  fi->fh = (uint64_t)file->ino;
+
+  return 0;
+}
+
+static int inode_release(const char* path, struct fuse_file_info* fi) {
+  (void)path;
+  unsigned int ino = (unsigned int)fi->fh;
+  (void)ino;
+
+  return 0;
+}
+
+static const struct fuse_operations ram_oper = {.create = inode_create,
+                                                .utimens = inode_utimens,
+                                                .getattr = inode_getattr,
+                                                .readdir = inode_readdir,
+                                                .destroy = inode_destroy,
+                                                .mkdir = inode_mkdir,
+                                                .statfs = inode_statfs,
+                                                .write = inode_write,
+                                                .read = inode_read,
+                                                .chmod = inode_chmod,
+                                                .rmdir = inode_rmdir,
+                                                .unlink = inode_unlink,
+                                                .link = inode_link,
+                                                .symlink = inode_symlink,
+                                                .readlink = inode_readlink,
+                                                .open = inode_open,
+                                                .release = inode_release};
 
 int main(int argc, char* argv[]) {
   inode_table[2].mode = S_IFDIR | 0755;
